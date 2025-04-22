@@ -2,9 +2,9 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"taskapp/config"
+	"taskapp/internal/models"
 
 	_ "github.com/lib/pq"
 	"github.com/uptrace/bun"
@@ -14,8 +14,8 @@ import (
 var DB *bun.DB
 
 func Init(cfg *config.Config) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+	dsn := cfg.DatabaseURL
+	log.Println("Using DSN:", dsn)
 
 	sqldb, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -23,6 +23,8 @@ func Init(cfg *config.Config) {
 	}
 
 	DB = bun.NewDB(sqldb, pgdialect.New())
+
+	DB.RegisterModel((*models.TaskUser)(nil))
 
 	if err := DB.Ping(); err != nil {
 		log.Fatal("Failed to connect to DB:", err)

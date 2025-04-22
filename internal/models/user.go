@@ -1,11 +1,9 @@
 package models
 
-import (
-	"time"
-)
+import "time"
 
 type User struct {
-	ID        int       `bun:"id,pk,autoincrement"` // Primary key, auto increment
+	ID        int       `bun:"id,pk,autoincrement"`
 	Username  string    `bun:"username,notnull"`
 	Email     string    `bun:"email,unique,notnull"`
 	Password  string    `bun:"password,notnull"`
