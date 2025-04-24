@@ -5,48 +5,35 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"taskapp/internal/auth"
 	"taskapp/internal/models"
-	"taskapp/internal/repository"
+	"taskapp/internal/services" // Make sure to import your service package
 )
 
 type UserHandler struct {
-	UserRepo repository.UserRepository
+	UserService *services.UserService // Ensure UserService is a pointer to the service
 }
 
-func NewUserHandler(userRepo repository.UserRepository) *UserHandler {
-	return &UserHandler{UserRepo: userRepo}
+// NewUserHandler creates a new UserHandler with the UserService injected as a pointer
+func NewUserHandler(userService *services.UserService) *UserHandler {
+	return &UserHandler{UserService: userService}
 }
 
 func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Parse the request body into a User struct
 	var user models.User
-	err := json.NewDecoder(r.Body).Decode(&user)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
-		log.Println("Error decoding request body:", err)
+		log.Println("Error decoding user:", err)
 		return
 	}
 
-	// Hash the password
-	hashedPassword, err := auth.HashPassword(user.Password)
-	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-		log.Println("Error hashing password:", err)
-		return
-	}
-	user.Password = hashedPassword
-
-	err = h.UserRepo.CreateUser(context.Background(), &user)
-	if err != nil {
+	if err := h.UserService.RegisterUser(context.Background(), &user); err != nil {
 		http.Error(w, "Failed to register user", http.StatusInternalServerError)
-		log.Println("Error creating user:", err)
+		log.Println("Registration error:", err)
 		return
 	}
 
@@ -54,9 +41,7 @@ func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "User registered successfully"})
 }
 
-// LoginUser
 func (h *UserHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -66,31 +51,15 @@ func (h *UserHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-
-	err := json.NewDecoder(r.Body).Decode(&input)
-	if err != nil || input.Email == "" || input.Password == "" {
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
-		log.Println("Invalid email or password input:", err)
+		log.Println("Login input error:", err)
 		return
 	}
 
-	user, err := h.UserRepo.FindUserByEmail(context.Background(), input.Email)
+	token, err := h.UserService.LoginUser(context.Background(), input.Email, input.Password)
 	if err != nil {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-		log.Println("Error fetching user:", err)
-		return
-	}
-
-	if !auth.CheckPasswordHash(input.Password, user.Password) {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-		return
-	}
-
-	// Generate a JWT token
-	token, err := auth.GenerateJWT(user.ID)
-	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-		log.Println("Error generating JWT:", err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
