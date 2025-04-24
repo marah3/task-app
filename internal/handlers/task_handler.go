@@ -12,49 +12,40 @@ import (
 	"time"
 )
 
-
 type TaskHandler struct {
 	repo  repository.TaskRepository
 	cache *cache.RedisCache // Redis cache injected
 }
 
-
 func NewTaskHandler(repo repository.TaskRepository, cache *cache.RedisCache) *TaskHandler {
 	return &TaskHandler{repo: repo, cache: cache}
 }
 
-
 func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
-	var task models.Task
+	var input struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
 
-	
 	log.Println("Incoming request body:", r.Body)
 
-	
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
+	// Decode the request body into the struct
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		log.Println("Error decoding request body:", err)
 		return
 	}
 
-	
-	log.Printf("Decoded task: %+v\n", task)
-
-	// Validate the user ID 
-	if task.UserID == 0 {
-		http.Error(w, "User ID is required", http.StatusBadRequest)
-		log.Println("User ID is missing or invalid")
-		return
+	task := models.Task{
+		Title:       input.Title,
+		Description: input.Description,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
-	
-	task.CreatedAt = time.Now()
-	task.UpdatedAt = time.Now()
+	log.Printf("Creating task: %+v\n", task)
 
-	
-	log.Printf("Creating task for user %d: %+v\n", task.UserID, task)
-
-	
+	// Call the repository to save the task to the database
 	err := h.repo.CreateTask(r.Context(), &task)
 	if err != nil {
 		http.Error(w, "Error creating task", http.StatusInternalServerError)
@@ -62,14 +53,13 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
+	// Log the created task ID for debugging purposes
 	log.Printf("Created task with ID: %d\n", task.ID)
 
-	
+	// Respond with the created task
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(task)
 }
-
 
 func (h *TaskHandler) GetUserTasks(w http.ResponseWriter, r *http.Request) {
 	userIDStr := mux.Vars(r)["user_id"]
@@ -80,8 +70,7 @@ func (h *TaskHandler) GetUserTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the tasks are cached in Redis
-	cacheKey := "user_tasks_" + strconv.FormatInt(userID, 10)
+	cacheKey := "user_tasks_"
 	cachedTasks, err := h.cache.Get(cacheKey)
 	if err == nil && cachedTasks != "" {
 		log.Println("Returning tasks from cache")
@@ -90,7 +79,6 @@ func (h *TaskHandler) GetUserTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch tasks from the database if not in cache
 	tasks, err := h.repo.GetTasksByUserID(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "Error fetching tasks", http.StatusInternalServerError)
@@ -98,15 +86,12 @@ func (h *TaskHandler) GetUserTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	tasksJSON, _ := json.Marshal(tasks)
-	h.cache.Set(cacheKey, string(tasksJSON)) // Save to cache with an appropriate expiration time
-
+	h.cache.Set(cacheKey, string(tasksJSON)) // Save to cache
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(tasks)
 }
-
 
 func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := h.repo.ListTasks(r.Context())
@@ -118,7 +103,6 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(tasks)
 }
-
 
 func (h *TaskHandler) GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	taskIDStr := mux.Vars(r)["id"]
@@ -139,7 +123,6 @@ func (h *TaskHandler) GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(task)
 }
 
-
 func (h *TaskHandler) AssignTaskToUser(w http.ResponseWriter, r *http.Request) {
 	taskIDStr := mux.Vars(r)["id"]
 	taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
@@ -150,37 +133,36 @@ func (h *TaskHandler) AssignTaskToUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		UserID int64 `json:"user_id"`
+		UserIDs []int `json:"user_ids"`
 	}
 
-	
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		log.Println("Error decoding request body:", err)
 		return
 	}
 
-	
-	if input.UserID == 0 {
-		http.Error(w, "User ID is required to assign task", http.StatusBadRequest)
-		log.Println("User ID is missing or invalid")
+	if len(input.UserIDs) == 0 {
+		http.Error(w, "At least one User ID is required", http.StatusBadRequest)
+		log.Println("User IDs are missing or invalid")
 		return
 	}
 
-	
-	err = h.repo.AssignTaskToUser(r.Context(), taskID, input.UserID)
-	if err != nil {
-		http.Error(w, "Error assigning task", http.StatusInternalServerError)
-		log.Println("Error assigning task:", err)
-		return
+	for _, userID := range input.UserIDs {
+		err = h.repo.AssignTaskToUser(r.Context(), taskID, int64(userID))
+		if err != nil {
+			log.Printf("Error assigning task %d to user %d: %v", taskID, userID, err)
+			http.Error(w, "Error assigning task", http.StatusInternalServerError)
+			return
+		}
 	}
 
-	
-	log.Printf("Assigned task ID: %d to user %d\n", taskID, input.UserID)
+	log.Printf("Assigned task ID: %d to users: %+v\n", taskID, input.UserIDs)
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"task_id": taskID,
-		"user_id": input.UserID,
-		"message": "Task assigned successfully",
+		"task_id":  taskID,
+		"user_ids": input.UserIDs,
+		"message":  "Task assigned successfully",
 	})
 }

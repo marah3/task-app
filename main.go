@@ -7,7 +7,6 @@ import (
 	"taskapp/config"
 	"taskapp/internal/cache"
 	"taskapp/internal/database"
-	"taskapp/internal/dependencies" // new import
 	"taskapp/internal/handlers"
 	"taskapp/internal/repository"
 	"taskapp/internal/routes"
@@ -31,7 +30,7 @@ func main() {
 	redisClient := cache.NewRedisCache()
 
 	// Create the dependencies struct
-	deps := &dependencies.Dependencies{
+	deps := &Dependencies{
 		DB:    database.DB,
 		Redis: redisClient,
 	}

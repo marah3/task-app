@@ -2,22 +2,21 @@ package config
 
 import (
 	"context"
+	"github.com/joho/godotenv"
 	"log"
 
 	"github.com/sethvargo/go-envconfig"
 )
 
 type Config struct {
-	Port       string `env:"PORT,default=8080"`
-	DBHost     string `env:"DB_HOST,default=localhost"`
-	DBPort     string `env:"DB_PORT,default=5432"`
-	DBUser     string `env:"DB_USER,default=postgres"`
-	DBPassword string `env:"DB_PASSWORD,required"`
-	DBName     string `env:"DB_NAME,default=task_app"`
-	RedisAddr  string `env:"REDIS_ADDR,default=localhost:6379"`
+	Port        string `env:"PORT,default=8080"`
+	DatabaseURL string `env:"DATABASE_URL"`
+	RedisAddr   string `env:"REDIS_ADDR,default=localhost:6379"`
 }
 
 func LoadConfig() *Config {
+	_ = godotenv.Load()
+
 	var cfg Config
 	ctx := context.Background()
 
