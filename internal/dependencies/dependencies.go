@@ -1,4 +1,4 @@
-package main
+package dependencies
 
 import (
 	"github.com/uptrace/bun"
